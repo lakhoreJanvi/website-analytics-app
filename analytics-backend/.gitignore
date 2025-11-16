@@ -1,0 +1,29 @@
+# Node
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Docker
+docker-data/
+
+# Coverage reports
+coverage/
+
+# Temporary files
+.tmp/
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
