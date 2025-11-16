@@ -9,6 +9,7 @@ module.exports = (sequelize) => {
     },
     name: { type: DataTypes.STRING, allowNull: false },
     ownerEmail: { type: DataTypes.STRING },
+    apiKey: { type: DataTypes.STRING, allowNull: true,},
     apiKeyHash: { type: DataTypes.STRING, unique: true }, // store hash of key
     revoked: { type: DataTypes.BOOLEAN, defaultValue: false },
     revokedAt: { type: DataTypes.DATE, allowNull: true },

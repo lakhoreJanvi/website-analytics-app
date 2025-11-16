@@ -18,7 +18,6 @@ module.exports = (app) => {
           }
         }
       },
-      security: [{ ApiKeyAuth: [] }],
     },
     apis: ['./src/routes/*.js'],
   };

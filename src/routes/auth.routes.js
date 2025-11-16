@@ -5,6 +5,8 @@ const { generateRawApiKey, hashApiKey } = require('../utils/apiKey');
 const Joi = require('joi');
 const router = require("express").Router();
 const passport = require("passport");
+const { verifyApiKeyHash } = require('../utils/apiKey');
+const { validate: isUuid } = require('uuid');
 
 router.get("/google", passport.authenticate("google", { scope: ["profile", "email"] }));
 
@@ -70,6 +72,7 @@ router.post('/register', async (req, res) => {
     const app = await db.App.create({
       name,
       ownerEmail,
+      apiKey: rawKey,  
       apiKeyHash: hash,
       revoked: false,
       userId: user.id,
@@ -124,17 +127,20 @@ router.post('/register', async (req, res) => {
  */
 router.get('/api-key/:appId', async (req, res) => {
   try {
+    const { appId } = req.params;
+
+    if (!isUuid(appId)) {
+      return res.status(400).json({ message: 'Invalid appId format' });
+    }
+
     const app = await db.App.findByPk(req.params.appId, {
-      attributes: ['id', 'name', 'ownerEmail', 'revoked', 'createdAt', 'apiKeyHash']
+      attributes: ['id', 'name', 'ownerEmail', 'apiKey','revoked', 'createdAt']
     });
 
     if (!app) {
       return res.status(404).json({ message: 'App not found' });
     }
 
-    if (app.revoked) {
-      return res.status(403).json({ message: 'API key revoked' });
-    }
     return res.json(app);
   } catch (err) {
     console.error(err);
@@ -148,6 +154,8 @@ router.get('/api-key/:appId', async (req, res) => {
  *   post:
  *     summary: Revoke an API key
  *     tags: [API Keys]
+ *     security:
+ *       - ApiKeyAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -163,38 +171,41 @@ router.get('/api-key/:appId', async (req, res) => {
  *         description: Successfully revoked
  */
 router.post('/revoke', async (req, res) => {
-  try {
-    const { appId } = req.body;
-
-    console.log('req.user:', req.user);
-    if (!req.user) {
-      return res.status(401).json({ message: 'Unauthorized' });
-    }
-
-    if (!appId) {
-      return res.status(400).json({ message: 'appId is required' });
-    }
-
-    const app = await db.App.findByPk(appId);
-    if (!app) {
-      return res.status(404).json({ message: 'App not found' });
-    }
-
-    if (app.revoked === true) {
-      return res.status(400).json({ message: 'API key already revoked' });
-    }
-    
-    app.revoked = true;
-    app.apiKey = null;
-    app.revokedAt = new Date();
-    await app.save();
-
-    return res.json({ message: 'API key revoked successfully' });
-
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: 'Internal server error' });
+  const rawKey = req.header('x-api-key');
+  if (!rawKey) {
+    return res.status(401).json({ message: "Missing API key" });
   }
+
+  const allApps = await db.App.findAll();
+
+  let matchedApp = null;
+  for (const app of allApps) {
+    const ok = await verifyApiKeyHash(rawKey, app.apiKeyHash || "");
+    if (ok) {
+      matchedApp = app;
+      break;
+    }
+  }
+
+  if (!matchedApp) {
+    return res.status(401).json({ message: "Invalid API key" });
+  }  
+
+  const { appId } = req.body;
+  if (matchedApp.id !== appId) {
+    return res.status(403).json({ message: "AppId does not belong to this app" });
+  }
+
+  if (matchedApp.revoked) {
+    return res.status(400).json({ message: "API key is already revoked" });
+  }
+
+  matchedApp.revoked = true;
+  matchedApp.apiKey = null;
+  matchedApp.revokedAt = new Date();
+  await matchedApp.save();
+
+  return res.json({ message: "API key revoked successfully" });
 });
 
 module.exports = router;

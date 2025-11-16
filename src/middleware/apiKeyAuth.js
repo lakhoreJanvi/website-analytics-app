@@ -10,7 +10,7 @@ async function apiKeyAuth(req, res, next) {
     const rawKey = req.header('x-api-key');
     if (!rawKey) return res.status(401).json({ message: 'Missing API key' });
 
-    const apps = await db.App.findAll({ where: { revoked: false } });
+    const apps = await db.App.findAll();
     for (const app of apps) {
       const ok = await verifyApiKeyHash(rawKey, app.apiKeyHash || '');
       if (ok) {

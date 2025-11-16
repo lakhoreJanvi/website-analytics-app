@@ -169,11 +169,14 @@ router.get("/event-summary", async (req, res) => {
 
   let uniqueUsers = 0;
   try {
-    uniqueUsers = await db.Event.count({
-      where,
-      distinct: true,
-      col: db.Sequelize.literal(`metadata->>'userId'`)
+    const userIds = await db.Event.findAll({
+    where,
+      attributes: [
+        [db.Sequelize.fn("jsonb_extract_path_text", db.Sequelize.col("metadata"), "userId"), "userId"]
+      ],
+      raw: true
     });
+    uniqueUsers = new Set(userIds.map(u => u.userId)).size;
   } catch (err) {
     uniqueUsers = 0;
   }
@@ -225,6 +228,7 @@ router.get("/event-summary", async (req, res) => {
  *       200:
  *         description: User stats results
  */
+const { Op } = require("sequelize");
 router.get('/user-stats', async (req, res) => {
   const schema = Joi.object({ userId: Joi.string().required() });
   const { error, value } = schema.validate(req.query);
@@ -234,40 +238,38 @@ router.get('/user-stats', async (req, res) => {
 
   const where = {
     metadata: {
-      userId: userId
+      [Op.contains]: { userId }
     }
   };
 
   const events = await db.Event.findAll({
     where,
-    order: [['timestamp', 'DESC']],
+    order: [["timestamp", "DESC"]],
     limit: 50
   });
 
   const totalEvents = await db.Event.count({ where });
+  if (totalEvents === 0) {
+    return res.status(404).json({ 
+      message: "User not found or no events recorded for this userId" 
+    });
+  }
 
   const latest = events[0];
 
   const deviceDetails = latest
     ? {
-        browser: latest.metadata.browser,
-        os: latest.metadata.os
+        browser: latest.metadata?.browser || null,
+        os: latest.metadata?.os || null
       }
     : {};
 
   const ipAddress = latest ? latest.ipAddress : null;
-
-  res.json({
+  res.json({  
     userId,
     totalEvents,
     deviceDetails,
-    ipAddress,
-    recentEvents: events.map(e => ({
-      id: e.id,
-      eventType: e.eventType,
-      timestamp: e.timestamp,
-      metadata: e.metadata
-    }))
+    ipAddress
   });
 });
 
